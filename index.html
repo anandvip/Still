@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<!--
+==========================================================================
+  STILL POINT — monthly stillness ledger & pace keeper
+--------------------------------------------------------------------------
+  1. DATE CREATED : 2026-08-13  (v2 — daily ledger release)
+  2. TOOL / MODEL : Claude Opus 5 (Anthropic)
+  3. PROMPT USED  :
+     "Create a tool where the user sets a goal for a month for how many
+      minutes he is going to sit in stillness, e.g. goal 1260 mins for a
+      30-31 day month, sessions of 21 minutes each. If 13 days have passed
+      and 210 mins are completed, 19 days remain — the tool must tell the
+      meditator accurately how many 21-min sessions per day are needed to
+      meet the goal, either over the remainder of the month or over a
+      user-chosen number of days. Beautiful, mobile-first, spiritually
+      evolved typography. Footer: built with <model name>, ideation by
+      Vipul Anand of Kurukshetra — to help seekers practice more often,
+      because AI may take their job but not this practice.
+      FOLLOW-UP: the meditator should be able to set his/her own goals,
+      track daily, take input every day, and track missed entries too —
+      a devotion measurement of quality time spent with oneself."
+  4. README      : see companion README.md
+--------------------------------------------------------------------------
+  Stack : single-file HTML/CSS/JS · no frameworks · no CDN · offline-first
+  State : localStorage (guarded, falls back to memory), keyed per month
+==========================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1620">
+<title>Still Point — a monthly ledger of sitting</title>
+<meta name="description" content="Set a monthly goal in minutes, log each day's sitting, and see exactly how many sits a day remain to meet it.">
+<style>
+:root{
+  --night:#0f1620;
+  --dusk:#151f2b;
+  --horizon:#1e2c3a;
+  --line:rgba(206,220,228,.13);
+  --moon:#e7ebe6;
+  --mist:#8fa2af;
+  --lamp:#d9a441;
+  --ember:#c9694a;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--night);
+  background-image:radial-gradient(120% 60% at 50% 0%,#1a2634 0%,#0f1620 62%);
+  background-attachment:fixed;
+  color:var(--moon);
+  font-family:var(--mono);
+  -webkit-font-smoothing:antialiased;
+  line-height:1.5;
+  padding:0 16px calc(28px + env(safe-area-inset-bottom));
+}
+.wrap{max-width:520px;margin:0 auto}
+
+/* ---------- masthead ---------- */
+.mast{padding:32px 0 18px;text-align:center}
+.eyebrow{font-size:10px;letter-spacing:.34em;text-transform:uppercase;color:var(--mist);margin:0 0 13px}
+h1{font-family:var(--serif);font-weight:400;font-size:38px;line-height:1.05;margin:0;letter-spacing:-.01em}
+h1 em{font-style:italic;color:var(--lamp)}
+.creed{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--mist);margin:9px 0 0}
+
+/* ---------- hero verdict ---------- */
+.verdict{
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  padding:24px 0 22px;display:grid;grid-template-columns:108px 1fr;gap:16px;align-items:center
+}
+.dial{position:relative;width:108px;height:108px}
+.dial svg{transform:rotate(-90deg);display:block}
+.dial .track{fill:none;stroke:var(--horizon);stroke-width:7}
+.dial .arc{fill:none;stroke:var(--lamp);stroke-width:7;stroke-linecap:round;
+  stroke-dasharray:314;stroke-dashoffset:314;transition:stroke-dashoffset .9s cubic-bezier(.22,.8,.3,1)}
+.dial .pct{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.pct b{font-family:var(--serif);font-size:23px;font-weight:400;letter-spacing:-.02em}
+.pct span{font-size:8.5px;letter-spacing:.2em;color:var(--mist);text-transform:uppercase}
+.callout .big{font-family:var(--serif);font-size:50px;line-height:.94;letter-spacing:-.03em;display:block;margin-bottom:6px}
+.callout .big small{font-size:19px;color:var(--mist);letter-spacing:0}
+.callout .said{font-family:var(--serif);font-style:italic;font-size:16px;color:var(--moon);margin:0 0 9px}
+.callout .sub{font-size:11.5px;color:var(--mist);margin:0}
+.callout .sub b{color:var(--moon);font-weight:400}
+
+/* ---------- stat rows ---------- */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+.stat{background:var(--night);padding:13px 6px;text-align:center}
+.stat b{display:block;font-family:var(--serif);font-size:20px;font-weight:400;letter-spacing:-.02em}
+.stat span{display:block;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--mist);margin-top:5px}
+.stat.hi b{color:var(--lamp)}
+
+/* ---------- sections ---------- */
+.sec{padding:24px 0 2px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:13px}
+.sec-head h2{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--mist);font-weight:400;margin:0}
+.sec-head .note{font-family:var(--serif);font-style:italic;font-size:12.5px;color:var(--mist);text-align:right}
+.said-line{font-family:var(--serif);font-style:italic;font-size:13.5px;color:var(--mist);margin:12px 0 0}
+
+/* ---------- month nav ---------- */
+.nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.nav b{font-family:var(--serif);font-size:19px;font-weight:400;letter-spacing:.01em}
+.nav button{appearance:none;background:transparent;border:1px solid var(--line);border-radius:4px;
+  color:var(--mist);width:38px;height:34px;font-size:15px;cursor:pointer;font-family:var(--mono)}
+.nav button:active{color:var(--moon);background:var(--horizon)}
+
+/* ---------- calendar of vessels (signature) ---------- */
+.dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:6px}
+.dow span{text-align:center;font-size:8px;letter-spacing:.14em;color:var(--mist);text-transform:uppercase}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cell{appearance:none;background:transparent;border:0;padding:0;cursor:pointer;
+  display:flex;flex-direction:column;gap:4px;font-family:var(--mono);text-align:center}
+.cell .vessel{height:46px;border:1px solid var(--line);border-radius:3px;background:var(--dusk);
+  display:flex;flex-direction:column-reverse;gap:2px;padding:3px;overflow:hidden}
+.cell .vessel i{display:block;border-radius:1px;background:var(--lamp);opacity:.9}
+.cell .vessel i.plan{background:transparent;box-shadow:inset 0 0 0 1px rgba(217,164,65,.42)}
+.cell .d{font-size:9px;color:var(--mist);letter-spacing:.04em}
+.cell .m{font-size:9px;color:var(--moon);letter-spacing:.04em;min-height:12px}
+.cell.blank{visibility:hidden}
+.cell.unkept .vessel{background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(206,220,228,.055) 3px 7px)}
+.cell.unkept .m{color:var(--mist)}
+.cell.future .vessel{border-style:dashed;border-color:rgba(206,220,228,.16)}
+.cell.future .m{color:var(--mist)}
+.cell.today .vessel{box-shadow:inset 0 0 0 1.5px var(--lamp)}
+.cell.sel .vessel{border-color:var(--moon)}
+.cell:focus-visible{outline:2px solid var(--lamp);outline-offset:2px;border-radius:4px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:9px;letter-spacing:.1em;color:var(--mist);text-transform:uppercase}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.legend .k{background:var(--lamp)}
+.legend .u{background:repeating-linear-gradient(135deg,transparent 0 2px,rgba(206,220,228,.35) 2px 5px);border:1px solid var(--line)}
+.legend .p{box-shadow:inset 0 0 0 1px rgba(217,164,65,.5)}
+
+/* ---------- day editor ---------- */
+.editor{margin-top:16px;border:1px solid var(--line);border-radius:5px;background:var(--dusk);padding:15px}
+.editor .when{font-family:var(--serif);font-size:17px;margin:0 0 3px}
+.editor .hint{font-size:10.5px;color:var(--mist);margin:0 0 13px;letter-spacing:.02em}
+.stepper{display:flex;gap:8px;align-items:stretch}
+.stepper button{flex:0 0 52px;appearance:none;border:1px solid var(--line);border-radius:4px;background:var(--horizon);
+  color:var(--moon);font-size:19px;font-family:var(--serif);cursor:pointer}
+.stepper button:active{background:rgba(217,164,65,.2)}
+.stepper .field{flex:1;display:flex;flex-direction:column;gap:4px}
+.stepper .field small{font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--mist);text-align:center}
+.stepper input{text-align:center;font-size:17px;padding:9px 6px}
+.editor .row{display:flex;gap:8px;margin-top:11px}
+.editor .row button{flex:1;appearance:none;border:1px solid var(--line);border-radius:4px;background:transparent;
+  color:var(--mist);font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  padding:10px 4px;cursor:pointer}
+.editor .row button.keep{border-color:rgba(217,164,65,.45);color:var(--moon);background:rgba(217,164,65,.1)}
+
+/* ---------- form ---------- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.f{display:flex;flex-direction:column;gap:6px}
+.f.full{grid-column:1/-1}
+label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--mist)}
+input,select{width:100%;appearance:none;background:var(--dusk);color:var(--moon);border:1px solid var(--line);
+  border-radius:4px;padding:11px 12px;font-family:var(--mono);font-size:15px;letter-spacing:.02em}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+.seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{flex:1;appearance:none;background:transparent;border:0;color:var(--mist);font-family:var(--mono);
+  font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:11px 3px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--horizon);color:var(--moon)}
+.goalout{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--mist);margin:2px 0 0}
+
+/* ---------- reckoning ---------- */
+.lines{border-top:1px solid var(--line);margin-top:22px}
+.line{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);font-size:12px}
+.line span{color:var(--mist)}
+.line b{font-weight:400;letter-spacing:.02em;text-align:right}
+.flag{margin-top:16px;padding:13px 14px;border-radius:4px;border:1px solid rgba(201,105,74,.35);
+  background:rgba(201,105,74,.09);font-family:var(--serif);font-style:italic;font-size:14px;color:#f0d3c8}
+.flag.calm{border-color:rgba(217,164,65,.3);background:rgba(217,164,65,.08);color:#f2e2c4}
+
+/* ---------- footer ---------- */
+footer{margin-top:32px;padding-top:22px;border-top:1px solid var(--line);text-align:center}
+footer p{margin:0 0 10px;font-size:11px;color:var(--mist);line-height:1.75}
+footer .say{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--moon);max-width:31ch;margin:0 auto 16px}
+footer .credit{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase}
+footer .credit b{color:var(--moon);font-weight:400}
+
+@media (min-width:430px){
+  h1{font-size:44px}
+  .callout .big{font-size:58px}
+  .cell .vessel{height:52px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">Stillness · monthly ledger</p>
+    <h1>Still <em>Point</em></h1>
+    <p class="creed">What is left, divided by the days that remain.</p>
+  </header>
+
+  <section class="verdict" aria-live="polite">
+    <div class="dial">
+      <svg width="108" height="108" viewBox="0 0 108 108" aria-hidden="true">
+        <circle class="track" cx="54" cy="54" r="50"></circle>
+        <circle class="arc" id="arc" cx="54" cy="54" r="50"></circle>
+      </svg>
+      <div class="pct"><b id="pct">0%</b><span>of goal</span></div>
+    </div>
+    <div class="callout">
+      <span class="big" id="perDay">—</span>
+      <p class="said" id="said"></p>
+      <p class="sub" id="split"></p>
+    </div>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><b id="sLeftMin">0</b><span>min left</span></div>
+    <div class="stat"><b id="sLeftSits">0</b><span>sits left</span></div>
+    <div class="stat"><b id="sDays">0</b><span>days left</span></div>
+  </div>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Devotion</h2><p class="note" id="devNote"></p></div>
+    <div class="stats">
+      <div class="stat hi"><b id="dKept">0%</b><span>days kept</span></div>
+      <div class="stat"><b id="dThread">0</b><span>thread now</span></div>
+      <div class="stat"><b id="dBest">0</b><span>longest thread</span></div>
+    </div>
+    <p class="said-line" id="devSay"></p>
+  </section>
+
+  <section class="sec">
+    <div class="nav">
+      <button type="button" id="prevM" aria-label="Previous month">‹</button>
+      <b id="monthLabel">—</b>
+      <button type="button" id="nextM" aria-label="Next month">›</button>
+    </div>
+    <div class="dow" aria-hidden="true">
+      <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+    </div>
+    <div class="cal" id="cal"></div>
+    <div class="legend">
+      <span><i class="k"></i>kept</span>
+      <span><i class="u"></i>unkept</span>
+      <span><i class="p"></i>planned</span>
+    </div>
+
+    <div class="editor" id="editor">
+      <p class="when" id="edWhen">—</p>
+      <p class="hint" id="edHint"></p>
+      <div class="stepper">
+        <button type="button" id="edMinus" aria-label="One sit fewer">−</button>
+        <div class="field">
+          <input id="edMin" type="number" inputmode="numeric" min="0" step="1" value="0" aria-label="Minutes sat that day">
+          <small>minutes</small>
+        </div>
+        <button type="button" id="edPlus" aria-label="One sit more">+</button>
+      </div>
+      <div class="row">
+        <button type="button" class="keep" id="edToday">Jump to today</button>
+        <button type="button" id="edClear">Clear day</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Set the measure</h2><p class="note">saved per month</p></div>
+    <div class="grid">
+      <div class="f full">
+        <label>Set the goal as</label>
+        <div class="seg" role="group" aria-label="Goal type">
+          <button type="button" id="gTotal" aria-pressed="true">Total minutes</button>
+          <button type="button" id="gMins" aria-pressed="false">Minutes a day</button>
+          <button type="button" id="gSits" aria-pressed="false">Sits a day</button>
+        </div>
+      </div>
+      <div class="f">
+        <label for="goalVal" id="goalLbl">Total minutes</label>
+        <input id="goalVal" type="number" inputmode="numeric" min="1" step="1" value="1260">
+      </div>
+      <div class="f">
+        <label for="session">Sit length (min)</label>
+        <input id="session" type="number" inputmode="numeric" min="1" step="1" value="21">
+      </div>
+      <div class="f full"><p class="goalout" id="goalOut"></p></div>
+      <div class="f full">
+        <label>Finish within</label>
+        <div class="seg" role="group" aria-label="Finish within">
+          <button type="button" id="modeMonth" aria-pressed="true">Rest of month</button>
+          <button type="button" id="modeCustom" aria-pressed="false">Chosen days</button>
+        </div>
+      </div>
+      <div class="f full" id="customWrap" hidden>
+        <label for="customDays">Number of days, counting today</label>
+        <input id="customDays" type="number" inputmode="numeric" min="1" max="365" step="1" value="19">
+      </div>
+      <div class="f full">
+        <label for="carry">Carry-in minutes (sat before you began logging)</label>
+        <input id="carry" type="number" inputmode="numeric" min="0" step="1" value="0">
+      </div>
+    </div>
+
+    <div class="lines">
+      <div class="line"><span>Goal</span><b id="rGoal">—</b></div>
+      <div class="line"><span>Logged this month</span><b id="rDone">—</b></div>
+      <div class="line"><span>Remaining</span><b id="rLeft">—</b></div>
+      <div class="line"><span>Needed per day</span><b id="rMpd">—</b></div>
+      <div class="line"><span>Original pace</span><b id="rPace0">—</b></div>
+      <div class="line"><span>Pace now required</span><b id="rPace1">—</b></div>
+      <div class="line"><span>Average of days kept</span><b id="rAvg">—</b></div>
+      <div class="line"><span>Last day of this stretch</span><b id="rEnd">—</b></div>
+    </div>
+    <div class="flag" id="flag" hidden></div>
+  </section>
+
+  <footer>
+    <p class="say">A machine may take the work from your hands. It cannot take the sitting from your spine.</p>
+    <p>Practice is the one skill that stays with the one who carries it.</p>
+    <p class="credit">Built with <b>Claude Opus 5</b> · Ideation by <b>Vipul Anand</b>, Kurukshetra</p>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- storage ---------------- */
+  var KEY = "stillpoint.ledger.v2", mem = {};
+  var store = {
+    get: function(){ try{ var r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return mem.v || null; } },
+    set: function(o){ try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){ mem.v = o; } }
+  };
+
+  var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var els = {};
+  ["arc","pct","perDay","said","split","sLeftMin","sLeftSits","sDays",
+   "dKept","dThread","dBest","devNote","devSay",
+   "prevM","nextM","monthLabel","cal","editor","edWhen","edHint","edMin","edMinus","edPlus","edToday","edClear",
+   "gTotal","gMins","gSits","goalVal","goalLbl","goalOut","session","modeMonth","modeCustom","customWrap","customDays","carry",
+   "rGoal","rDone","rLeft","rMpd","rPace0","rPace1","rAvg","rEnd","flag"]
+   .forEach(function(k){ els[k] = document.getElementById(k); });
+
+  function key(y,m){ return y + "-" + ("0" + (m+1)).slice(-2); }
+  function parseKey(k){ var p = k.split("-"); return { y:+p[0], m:(+p[1]) - 1 }; }
+  function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
+  function num(v,f){ v = parseInt(v,10); return isNaN(v) ? f : v; }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function fmt(n){ return Math.round(n).toLocaleString("en-IN"); }
+  function hrs(min){ var h = Math.floor(min/60), m = Math.round(min%60); return h ? (h + "h " + (m ? m + "m" : "")).trim() : m + "m"; }
+
+  /* ---------------- state ---------------- */
+  var real = new Date();
+  var REAL_KEY = key(real.getFullYear(), real.getMonth());
+  var REAL_DAY = real.getDate();
+
+  var state = { session:21, cursor:REAL_KEY, sel:REAL_DAY, months:{} };
+  var saved = store.get();
+  if (saved && typeof saved === "object") {
+    if (saved.session) state.session = saved.session;
+    if (saved.months) state.months = saved.months;
+  }
+
+  function month(){
+    var k = state.cursor;
+    if (!state.months[k]) state.months[k] = { goalMode:"total", goalVal:1260, carry:0, mode:"month", customDays:0, days:{} };
+    if (!state.months[k].days) state.months[k].days = {};
+    return state.months[k];
+  }
+
+  /* ---------------- derivation ---------------- */
+  function derive(){
+    var M = month(), P = parseKey(state.cursor);
+    var dim = daysInMonth(P.y, P.m);
+    var session = Math.max(1, num(state.session, 21));
+
+    var gv = Math.max(0, num(M.goalVal, 0));
+    var goal = M.goalMode === "mins" ? gv * dim
+             : M.goalMode === "sits" ? gv * session * dim
+             : gv;
+    goal = Math.max(1, Math.round(goal));
+
+    var isCur = state.cursor === REAL_KEY;
+    var isPast = state.cursor < REAL_KEY;
+    var today = isCur ? REAL_DAY : (isPast ? dim : 0);      // 0 = month lies entirely ahead
+
+    var logged = 0, keptDays = 0, best = 0, run = 0, thread = 0;
+    for (var d = 1; d <= dim; d++) {
+      var v = Math.max(0, num(M.days[d], 0));
+      logged += v;
+      if (d <= today) {
+        if (v > 0) { keptDays++; run++; if (run > best) best = run; }
+        else run = 0;
+      }
+    }
+    var start = today;
+    if (start > 0 && !(num(M.days[start], 0) > 0)) start--;   // a blank today hasn't broken the thread yet
+    for (var t = start; t >= 1; t--) { if (num(M.days[t], 0) > 0) thread++; else break; }
+
+    var carry = Math.max(0, num(M.carry, 0));
+    var doneTotal = logged + carry;
+    var leftMin = Math.max(0, goal - doneTotal);
+    var sitsLeft = Math.ceil(leftMin / session);
+
+    var daysLeftInMonth = today === 0 ? dim : Math.max(0, dim - today + 1);   // counting today
+    var horizon = M.mode === "custom"
+      ? clamp(num(M.customDays, 0) || daysLeftInMonth, 1, 365)
+      : daysLeftInMonth;
+
+    var base = horizon > 0 ? Math.floor(sitsLeft / horizon) : 0;
+    var extra = horizon > 0 ? sitsLeft % horizon : 0;
+
+    return {
+      M:M, y:P.y, m:P.m, dim:dim, session:session, goal:goal, today:today, isCur:isCur, isPast:isPast,
+      logged:logged, carry:carry, doneTotal:doneTotal, leftMin:leftMin, sitsLeft:sitsLeft,
+      keptDays:keptDays, elapsed:Math.max(0, today), best:best, thread:thread,
+      daysLeftInMonth:daysLeftInMonth, horizon:horizon, base:base, extra:extra
+    };
+  }
+  function plannedFor(D, i){ return D.base + (i < D.extra ? 1 : 0); }   // i = 0-based position in the stretch
+
+  /* ---------------- render ---------------- */
+  function render(){
+    var D = derive(), M = D.M, i;
+
+    /* dial */
+    var C = 2 * Math.PI * 50, p = clamp(D.doneTotal / D.goal, 0, 1);
+    els.arc.style.strokeDasharray = C.toFixed(1);
+    els.arc.style.strokeDashoffset = (C * (1 - p)).toFixed(1);
+    els.pct.textContent = Math.round(p * 100) + "%";
+
+    /* headline */
+    if (D.leftMin === 0) {
+      els.perDay.innerHTML = "Kept";
+      els.said.textContent = "The month's measure is met. Sit anyway.";
+      els.split.textContent = "Everything from here is surplus.";
+    } else if (D.horizon === 0) {
+      els.perDay.innerHTML = "0<small> days</small>";
+      els.said.textContent = "The month closed with " + fmt(D.leftMin) + " min unsat.";
+      els.split.textContent = "Carry the lesson, not the debt.";
+    } else {
+      var head = D.extra === 0 ? String(D.base) : (D.base + "–" + (D.base + 1));
+      var todaySits = plannedFor(D, 0);
+      els.perDay.innerHTML = head + "<small> sits/day</small>";
+      els.said.textContent = D.isCur
+        ? (todaySits === 0 ? "Nothing owed today." : "Sit " + todaySits + " time" + (todaySits === 1 ? "" : "s") + " today.")
+        : (D.isPast ? "This month is closed." : "Opens with " + todaySits + " sit" + (todaySits === 1 ? "" : "s") + " on day one.");
+      els.split.innerHTML = D.extra === 0
+        ? "<b>" + D.horizon + " days</b> × <b>" + D.base + " sits</b> of " + D.session + " min. Even the whole way."
+        : "<b>" + D.extra + " days</b> × " + (D.base + 1) + " sits, then <b>" + (D.horizon - D.extra) + " days</b> × " + D.base +
+          ". " + D.sitsLeft + " sits of " + D.session + " min in all.";
+    }
+
+    els.sLeftMin.textContent = fmt(D.leftMin);
+    els.sLeftSits.textContent = fmt(D.sitsLeft);
+    els.sDays.textContent = D.horizon;
+
+    /* devotion */
+    var kept = D.elapsed > 0 ? D.keptDays / D.elapsed : 0;
+    var unkept = Math.max(0, D.elapsed - D.keptDays);
+    els.dKept.textContent = Math.round(kept * 100) + "%";
+    els.dThread.textContent = D.thread;
+    els.dBest.textContent = D.best;
+    els.devNote.textContent = D.elapsed ? D.keptDays + " of " + D.elapsed + " days" : "not yet begun";
+    els.devSay.textContent =
+      D.elapsed === 0 ? "Devotion is counted only in days that have passed."
+      : unkept === 0 ? "Every day so far has been kept. That is the rarer achievement."
+      : unkept + " day" + (unkept === 1 ? "" : "s") + " unkept — carried into the pace above, not held against you.";
+
+    /* calendar */
+    els.monthLabel.textContent = MONTHS[D.m] + " " + D.y;
+    els.cal.innerHTML = "";
+    var lead = new Date(D.y, D.m, 1).getDay();
+    for (i = 0; i < lead; i++) {
+      var sp = document.createElement("div"); sp.className = "cell blank"; els.cal.appendChild(sp);
+    }
+    for (var d = 1; d <= D.dim; d++) {
+      var mins = Math.max(0, num(M.days[d], 0));
+      var past = D.today > 0 && d <= D.today;
+      var isToday = D.isCur && d === REAL_DAY;
+      var offset = d - Math.max(D.today, 1);
+      var planned = (offset >= 0 && offset < D.horizon) ? plannedFor(D, offset) : 0;
+
+      var cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "cell" + (past ? (mins > 0 ? " kept" : " unkept") : " future") +
+        (isToday ? " today" : "") + (d === state.sel ? " sel" : "");
+      cell.setAttribute("data-day", d);
+      cell.setAttribute("aria-label", d + " " + MONTHS[D.m] + ": " +
+        (mins > 0 ? mins + " minutes sat" : past ? "unkept" : planned + " sits planned"));
+
+      var v = document.createElement("div"); v.className = "vessel";
+      var doneBars = mins > 0 ? Math.max(1, Math.round(mins / D.session)) : 0;
+      var planBars = past && !isToday ? 0 : planned;
+      var totalBars = Math.min(doneBars + planBars, 8) || 1;
+      var bh = clamp(Math.floor((40 - (totalBars - 1) * 2) / totalBars), 2, 8);
+      var made = 0, b;
+      for (b = 0; b < doneBars && made < 8; b++, made++) {
+        var bar = document.createElement("i"); bar.style.height = bh + "px"; v.appendChild(bar);
+      }
+      for (b = 0; b < planBars && made < 8; b++, made++) {
+        var pb = document.createElement("i"); pb.className = "plan"; pb.style.height = bh + "px"; v.appendChild(pb);
+      }
+
+      var lm = document.createElement("div"); lm.className = "m";
+      lm.textContent = mins > 0 ? mins : (past ? "·" : (planned ? planned + "×" : ""));
+      var ld = document.createElement("div"); ld.className = "d"; ld.textContent = d;
+      cell.appendChild(v); cell.appendChild(lm); cell.appendChild(ld);
+      els.cal.appendChild(cell);
+    }
+
+    /* day editor */
+    var sd = clamp(state.sel, 1, D.dim);
+    state.sel = sd;
+    var selMins = Math.max(0, num(M.days[sd], 0));
+    var selDate = new Date(D.y, D.m, sd);
+    var dow = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][selDate.getDay()];
+    els.edWhen.textContent = dow + ", " + sd + " " + MONTHS[D.m];
+    var selPast = D.today > 0 && sd <= D.today;
+    els.edHint.textContent = selMins > 0
+      ? (Math.round(selMins / D.session * 10) / 10) + " sits of " + D.session + " min"
+      : selPast ? "Unkept. You can still enter it." : "Not yet arrived — logging it early is your own affair.";
+    if (document.activeElement !== els.edMin) els.edMin.value = selMins;
+
+    /* form */
+    if (document.activeElement !== els.session) els.session.value = state.session;
+    if (document.activeElement !== els.goalVal) els.goalVal.value = M.goalVal;
+    if (document.activeElement !== els.carry) els.carry.value = M.carry;
+    if (document.activeElement !== els.customDays) els.customDays.value = M.customDays || D.daysLeftInMonth;
+    els.goalLbl.textContent = M.goalMode === "mins" ? "Minutes a day" : M.goalMode === "sits" ? "Sits a day" : "Total minutes";
+    els.gTotal.setAttribute("aria-pressed", String(M.goalMode === "total"));
+    els.gMins.setAttribute("aria-pressed", String(M.goalMode === "mins"));
+    els.gSits.setAttribute("aria-pressed", String(M.goalMode === "sits"));
+    els.goalOut.textContent = "Goal reads " + fmt(D.goal) + " min (" + hrs(D.goal) + ") across " + D.dim +
+      " days — " + (Math.round(D.goal / D.dim * 10) / 10) + " min a day.";
+    els.modeMonth.setAttribute("aria-pressed", String(M.mode !== "custom"));
+    els.modeCustom.setAttribute("aria-pressed", String(M.mode === "custom"));
+    els.customWrap.hidden = M.mode !== "custom";
+
+    /* reckoning */
+    var minPerDay = D.horizon > 0 ? D.leftMin / D.horizon : 0;
+    var pace0 = D.goal / D.dim;
+    var end = new Date(D.y, D.m, Math.max(D.today, 1) + Math.max(D.horizon, 1) - 1);
+    els.rGoal.textContent = fmt(D.goal) + " min · " + hrs(D.goal);
+    els.rDone.textContent = fmt(D.logged) + " min" + (D.carry ? " + " + fmt(D.carry) + " carried" : "");
+    els.rLeft.textContent = fmt(D.leftMin) + " min · " + hrs(D.leftMin);
+    els.rMpd.textContent = D.horizon > 0
+      ? (Math.round(minPerDay * 10) / 10) + " min · " + (Math.round(D.sitsLeft / D.horizon * 100) / 100) + " sits" : "—";
+    els.rPace0.textContent = (Math.round(pace0 * 10) / 10) + " min/day over " + D.dim + " days";
+    els.rPace1.textContent = D.leftMin === 0 ? "nothing owed"
+      : (Math.round(minPerDay * 10) / 10) + " min/day · " + (Math.round(minPerDay / pace0 * 100) / 100) + "× original";
+    els.rAvg.textContent = D.keptDays ? Math.round(D.logged / D.keptDays) + " min across " + D.keptDays + " days" : "—";
+    els.rEnd.textContent = end.getDate() + " " + MONTHS[end.getMonth()] + " " + end.getFullYear();
+
+    /* flag */
+    var msg = "", calm = false;
+    if (D.leftMin === 0) { msg = "Goal complete. Every sit from here is surplus."; calm = true; }
+    else if (D.horizon === 0) { msg = "No days remain in this stretch. Set a measure for the month ahead."; }
+    else if (minPerDay > 240) { msg = "Over four hours a day. The body will refuse this before the mind does — widen the days or lower the measure."; }
+    else if (minPerDay > 120) { msg = "Above two hours a day. Holdable for a short stretch, punishing across a month."; }
+    else if (minPerDay / pace0 > 1.6) { msg = "You are asking " + (Math.round(minPerDay / pace0 * 100) / 100) + "× your original pace. Catch-up is possible; so is an honest, smaller goal."; }
+    else if (M.mode === "custom" && D.horizon > D.daysLeftInMonth) { msg = "This stretch runs " + (D.horizon - D.daysLeftInMonth) + " day(s) past the month's end."; calm = true; }
+    if (msg) { els.flag.hidden = false; els.flag.textContent = msg; els.flag.className = "flag" + (calm ? " calm" : ""); }
+    else els.flag.hidden = true;
+
+    store.set(state);
+  }
+
+  /* ---------------- events ---------------- */
+  els.cal.addEventListener("click", function(e){
+    var c = e.target.closest ? e.target.closest(".cell") : null;
+    if (!c || c.classList.contains("blank")) return;
+    state.sel = num(c.getAttribute("data-day"), 1);
+    render();
+    els.editor.scrollIntoView({ behavior:"smooth", block:"nearest" });
+  });
+
+  function setDay(mins){
+    var M = month(), d = state.sel;
+    mins = Math.max(0, Math.round(mins));
+    if (mins === 0) delete M.days[d]; else M.days[d] = mins;
+    render();
+  }
+  els.edPlus.addEventListener("click", function(){ setDay(num(els.edMin.value, 0) + Math.max(1, num(state.session, 21))); });
+  els.edMinus.addEventListener("click", function(){ setDay(num(els.edMin.value, 0) - Math.max(1, num(state.session, 21))); });
+  els.edClear.addEventListener("click", function(){ setDay(0); });
+  els.edMin.addEventListener("input", function(){ setDay(num(els.edMin.value, 0)); });
+  els.edToday.addEventListener("click", function(){ state.cursor = REAL_KEY; state.sel = REAL_DAY; render(); });
+
+  els.prevM.addEventListener("click", function(){ shift(-1); });
+  els.nextM.addEventListener("click", function(){ shift(1); });
+  function shift(n){
+    var P = parseKey(state.cursor), dt = new Date(P.y, P.m + n, 1);
+    state.cursor = key(dt.getFullYear(), dt.getMonth());
+    state.sel = (state.cursor === REAL_KEY) ? REAL_DAY : 1;
+    render();
+  }
+
+  function bindMonthNum(el, field){
+    el.addEventListener("input", function(){ month()[field] = el.value === "" ? 0 : num(el.value, 0); render(); });
+  }
+  bindMonthNum(els.goalVal, "goalVal");
+  bindMonthNum(els.carry, "carry");
+  bindMonthNum(els.customDays, "customDays");
+  els.session.addEventListener("input", function(){ state.session = Math.max(1, num(els.session.value, 21)); render(); });
+
+  els.gTotal.addEventListener("click", function(){ month().goalMode = "total"; render(); });
+  els.gMins.addEventListener("click", function(){ month().goalMode = "mins"; render(); });
+  els.gSits.addEventListener("click", function(){ month().goalMode = "sits"; render(); });
+  els.modeMonth.addEventListener("click", function(){ month().mode = "month"; render(); });
+  els.modeCustom.addEventListener("click", function(){ month().mode = "custom"; render(); });
+
+  render();
+})();
+</script>
+</body>
+</html>
